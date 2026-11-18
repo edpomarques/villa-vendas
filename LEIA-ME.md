@@ -55,7 +55,7 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
 ## Parte 5 – Cadastrar vendedores e ativar o relatório
 1. Na aba **VENDEDORES**, preencha uma linha por pessoa: e-mail Gmail, nome e **SIM** na coluna ativo. Para bloquear alguém, troque para **NÃO**; o bloqueio vale em até 5 minutos.
 2. No menu **App Vendas**, clique em **2. Ativar relatório D-1 diário**. O relatório chega todo dia às 7h para os e-mails da aba CONFIG (`RELATORIO_EMAILS`). Para incluir o sócio, separe os e-mails com vírgula. Para mudar o horário, altere `HORA_RELATORIO` e ative de novo.
-3. Para testar: **App Vendas > Enviar relatório D-1 agora**.
+3. Para testar: **App Vendas > Enviar relatório de HOJE (teste)**. Mostra os registros feitos hoje até o momento, com "[TESTE]" no assunto, e não grava na aba RESUMO_DIARIO. **Enviar relatório D-1 agora** reenvia o relatório de ontem.
 
 ## Parte 6 – Instalar no celular do vendedor
 - **Android (Chrome):** abra o link, toque nos ⋮ e depois em **Instalar app** ou **Adicionar à tela inicial**.

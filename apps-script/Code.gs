@@ -36,6 +36,7 @@ function onOpen() {
     .addItem('1. Configurar planilha', 'setup')
     .addItem('2. Ativar relatório D-1 diário', 'instalarGatilho')
     .addItem('Enviar relatório D-1 agora', 'relatorioD1')
+    .addItem('Enviar relatório de HOJE (teste)', 'relatorioHoje')
     .addToUi();
 }
 
@@ -246,7 +247,14 @@ function salvarFoto(u, b) {
 }
 
 /* ---------------- relatório D-1 ---------------- */
-function relatorioD1(diaOpcional) {
+function relatorioHoje() {
+  relatorioD1(Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), true);
+}
+
+function avisar(t) { try { SpreadsheetApp.getUi().alert(t); } catch (e) {} }
+
+function relatorioD1(diaOpcional, teste) {
+  teste = teste === true;
   const dia = typeof diaOpcional === 'string' ? diaOpcional : Utilities.formatDate(new Date(Date.now() - 864e5), TZ, 'yyyy-MM-dd');
   const diaBr = dia.split('-').reverse().join('/');
   const agora = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm");
@@ -272,13 +280,13 @@ function relatorioD1(diaOpcional) {
     };
   });
 
-  // histórico na aba RESUMO_DIARIO
+  // histórico na aba RESUMO_DIARIO (o teste de hoje não grava: o dia ainda não terminou)
   const rs = aba('RESUMO_DIARIO');
-  if (rs.getLastRow() > 1) {
+  if (!teste && rs.getLastRow() > 1) {
     const datas = rs.getRange(2, 1, rs.getLastRow() - 1, 1).getDisplayValues();
     for (let i = datas.length - 1; i >= 0; i--) if (datas[i][0] === dia || datas[i][0] === diaBr) rs.deleteRow(i + 2);
   }
-  L.forEach(function (x) {
+  if (!teste) L.forEach(function (x) {
     rs.appendRow(["'" + dia, x.v.nome, x.v.email, x.kmR, x.kmSt, x.n, x.venda, x.deg, x.neg, x.nv, x.conv, x.ini, x.fim, x.semGps, x.atras]);
   });
 
@@ -300,7 +308,7 @@ function relatorioD1(diaOpcional) {
     return a.length ? '<span style="color:#b42318">' + a.join(' · ') + '</span>' : '<span style="color:#1f7a45">OK</span>';
   };
   let h = '<div style="font-family:Arial,sans-serif;color:#22160d;max-width:760px">';
-  h += '<div style="background:#3a2416;color:#fff;padding:16px 18px;border-radius:10px 10px 0 0"><div style="font-size:20px;font-weight:800">Vendas externas · ' + diaBr + '</div><div style="font-size:13px;opacity:.8">Relatório D-1 · Villa Crocante</div></div>';
+  h += '<div style="background:#3a2416;color:#fff;padding:16px 18px;border-radius:10px 10px 0 0"><div style="font-size:20px;font-weight:800">Vendas externas · ' + diaBr + '</div><div style="font-size:13px;opacity:.8">' + (teste ? 'TESTE · dados de hoje até ' + agora.slice(11) + ' (parcial)' : 'Relatório D-1') + ' · Villa Crocante</div></div>';
   h += '<table style="border-collapse:separate;border-spacing:8px;margin:8px 0"><tr>' + card('Visitas', T.n) + card('Vendas', T.venda) + card('Conversão', conv + '%') + card('Degustações', T.deg) + card('Não vendas', T.nv) + card('KM rodados', T.km) + '</tr></table>';
   h += '<h3 style="margin:16px 0 6px">Por vendedor</h3><table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>Vendedor</th><th ' + th + '>KM</th><th ' + th + '>Visitas</th><th ' + th + '>Vendas</th><th ' + th + '>Degust.</th><th ' + th + '>Negoc.</th><th ' + th + '>Não venda</th><th ' + th + '>Conv.</th><th ' + th + '>1ª / última</th><th ' + th + '>Alertas</th></tr>';
   L.forEach(function (x) {
@@ -331,5 +339,7 @@ function relatorioD1(diaOpcional) {
   h += '<p style="font-size:12px;color:#6f5e50;margin-top:18px">Detalhes, fotos e localização nas abas VISITAS, KM e RESUMO_DIARIO da planilha: <a href="' + planilha().getUrl() + '">abrir planilha</a>.</p></div>';
 
   const para = getCfg('RELATORIO_EMAILS');
-  if (para) MailApp.sendEmail({ to: para, subject: 'Villa Crocante · Vendas externas · D-1 ' + diaBr + ' · ' + T.n + ' visitas, ' + T.venda + ' vendas', htmlBody: h, name: 'App Vendas Villa Crocante' });
+  if (!para) return avisar('Relatório não enviado: preencha RELATORIO_EMAILS na aba CONFIG.');
+  MailApp.sendEmail({ to: para, subject: (teste ? '[TESTE] ' : '') + 'Villa Crocante · Vendas externas · ' + (teste ? 'HOJE ' : 'D-1 ') + diaBr + ' · ' + T.n + ' visitas, ' + T.venda + ' vendas', htmlBody: h, name: 'App Vendas Villa Crocante' });
+  avisar('Relatório ' + (teste ? 'de teste (hoje, ' : '(') + diaBr + ') enviado para: ' + para);
 }
