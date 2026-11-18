@@ -4,7 +4,7 @@ São quatro peças:
 
 | Peça | Onde fica | Arquivos |
 |---|---|---|
-| App do vendedor | GitHub Pages (grátis) | pasta `app/` |
+| App do vendedor | GitHub Pages (grátis) | raiz do repositório (exceto a pasta `apps-script/`) |
 | Dados | Planilha Google: abas KM, CLIENTES, VISITAS, RESUMO_DIARIO, VENDEDORES e CONFIG | criadas automaticamente |
 | Fotos | Pasta do Google Drive "Villa Crocante – Fotos App Vendas", separada por vendedor e por mês | criada automaticamente |
 | Servidor e relatório D-1 | Apps Script ligado à planilha | `apps-script/Code.gs` |
@@ -28,7 +28,7 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
    - Em **Público-alvo**, clique em **Publicar app**. Sem isso, você precisa cadastrar cada vendedor como "usuário de teste". O app só pede nome e e-mail, então o Google não exige verificação.
 3. Vá em **Credenciais > Criar credenciais > ID do cliente OAuth**:
    - Tipo: **Aplicativo da Web**.
-   - Em **Origens JavaScript autorizadas**, informe exatamente `https://espomarques.github.io`, sem barra no final.
+   - Em **Origens JavaScript autorizadas**, informe exatamente `https://edpomarques.github.io`, sem barra no final.
    - Clique em **Criar** e copie o **ID do cliente**, que termina em `.apps.googleusercontent.com`.
 4. Na planilha, aba **CONFIG**, cole esse ID no valor de `GOOGLE_CLIENT_ID`.
 
@@ -44,13 +44,13 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
 
 ## Parte 4 – Publicar o app (GitHub Pages)
 1. No GitHub, clique em **+ > New repository**. Nome: `villa-vendas`, visibilidade **Public**, e clique em **Create repository**.
-2. Clique em **uploading an existing file** e arraste **todo o conteúdo da pasta `app/`**: os arquivos e a pasta `icons`, mas não a pasta `app` em si. Depois clique em **Commit changes**.
+2. Clique em **uploading an existing file** e arraste os arquivos do app (`index.html`, `app.js`, `styles.css`, `sw.js`, `config.js`, `manifest.webmanifest`) e a pasta `icons`. A pasta `apps-script/` guarda só uma cópia do servidor e não é usada pelo app. Depois clique em **Commit changes**.
 3. Abra o arquivo `config.js` no GitHub e clique no lápis para editar:
    - `API_URL`: a URL `/exec` da Parte 3
    - `GOOGLE_CLIENT_ID`: o ID da Parte 2
    - Clique em **Commit changes**.
 4. Vá em **Settings > Pages**. Em Source, escolha **Deploy from a branch**, branch **main**, pasta **/(root)**, e clique em **Save**.
-5. Em 1 a 2 minutos o app fica no ar em: `https://espomarques.github.io/villa-vendas/`
+5. Em 1 a 2 minutos o app fica no ar em: `https://edpomarques.github.io/villa-vendas/`
 
 ## Parte 5 – Cadastrar vendedores e ativar o relatório
 1. Na aba **VENDEDORES**, preencha uma linha por pessoa: e-mail Gmail, nome e **SIM** na coluna ativo. Para bloquear alguém, troque para **NÃO**; o bloqueio vale em até 5 minutos.
@@ -74,7 +74,7 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
 | Sintoma | Causa e solução |
 |---|---|
 | "App ainda não configurado" | `config.js` está sem `API_URL` ou sem `GOOGLE_CLIENT_ID`. |
-| Botão Google não aparece ou dá erro de origem | A origem `https://espomarques.github.io` não foi cadastrada no Google Cloud (Parte 2.3). |
+| Botão Google não aparece ou dá erro de origem | A origem `https://edpomarques.github.io` não foi cadastrada no Google Cloud (Parte 2.3). |
 | "Este login não pertence ao app" | O `GOOGLE_CLIENT_ID` da aba CONFIG é diferente do que está no `config.js`. |
 | "E-mail não autorizado" | Cadastre o e-mail na aba VENDEDORES com SIM. Pode levar 1 minuto para valer. |
 | Fotos não aparecem no app | A conta da empresa bloqueia compartilhamento por link no Drive. As fotos continuam salvas na pasta, e os links estão na planilha. |
