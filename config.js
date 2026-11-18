@@ -1,7 +1,4 @@
-/* Configuração do app – preencha os dois campos abaixo (veja o LEIA-ME). */
 window.VILLA_CONFIG = {
-  // URL do App da Web do Google Apps Script (termina em /exec)
-  API_URL: "",
-  // ID do cliente OAuth do Google Cloud (termina em .apps.googleusercontent.com)
-  GOOGLE_CLIENT_ID: ""
+  API_URL: "https://script.google.com/macros/s/AKfycbxn3eArWOyetgM38vGCQ4L4K-CkRlzn2NQScyRcHAJ-0Cilf4EgvLs_LrWeg8G5LoX3/exec",
+  GOOGLE_CLIENT_ID: "107424437275-67lmvlnvuki720ek91nfc4r16gs2m1q7.apps.googleusercontent.com"
 };
