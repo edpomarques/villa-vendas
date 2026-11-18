@@ -76,6 +76,14 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
 - O pedido aparece no histórico do cliente, com botão para reenviar, e o valor entra no relatório D-1.
 - A aba PEDIDOS é criada sozinha no primeiro pedido; não é preciso rodar a configuração de novo.
 
+## Gestão: painel, metas e retornos
+- **Perfil gestor:** na aba VENDEDORES, escreva **GESTOR** na coluna `perfil` (D) da sua linha. No app, a aba **KM** do rodapé vira **Equipe**, com o painel da equipe. Quem tem perfil GESTOR não entra no ranking.
+- **Metas:** menu **App Vendas > 3. Criar linhas de metas do mês** cria uma linha por vendedor na aba METAS. Preencha `meta_valor_rs`, `meta_visitas` e `meta_clientes_novos`. O vendedor vê a própria meta na tela Hoje; o gestor vê todas no painel.
+- **Projeção:** realizado ÷ dias úteis passados × dias úteis do mês (segunda a sábado).
+- **Periodicidade de pedido:** Diário, 2x por semana, Semanal, Quinzenal ou Mensal, no cadastro do cliente (obrigatória na venda).
+- **Retornos:** prazo do próximo contato. Ordem da regra: compromisso agendado > periodicidade (último pedido + período) > degustação ou negociação (7 dias) > venda sem periodicidade (30 dias) > não venda (reativar em 60 dias). **Retornos em dia** = clientes acompanhados que não estão atrasados ÷ total.
+- **Repetir pedido:** na visita com venda, o botão copia o último pedido do cliente para ajustar.
+
 ## Atualizar preços
 Os preços ficam só no arquivo **`precos.js`**, espelho do *Simulador de Pedidos Vendedores*:
 - `precos: [Especial 1, Padrão, Especial 2]`: preço por unidade, pedaço, kg ou pacote de 800 g.

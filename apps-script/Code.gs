@@ -1,6 +1,6 @@
 /**
  * Villa Crocante – App de Vendas Externo – servidor (Google Apps Script)
- * Guarda os dados na planilha (abas KM, CLIENTES, VISITAS, PEDIDOS), as fotos no Google Drive
+ * Guarda os dados na planilha (abas KM, CLIENTES, VISITAS, PEDIDOS, METAS), as fotos no Google Drive
  * e envia o relatório D-1 por e-mail.
  *
  * Primeiro uso: menu "App Vendas" > "1. Configurar planilha" (ou rode a função setup).
@@ -18,7 +18,7 @@ const CAB = {
     'fotos_inicio', 'fotos_fim', 'gps_inicio', 'gps_fim', 'atualizado_em', 'json'],
   CLIENTES: ['id', 'email', 'vendedor', 'cliente', 'cidade', 'endereco', 'telefone_loja', 'status', 'status_descricao',
     'ultima_visita', 'contato', 'telefone_contato', 'n_visitas', 'proximo_tipo', 'proximo_data', 'foto_fachada',
-    'foto_vitrine', 'criado_em', 'atualizado_em', 'json'],
+    'foto_vitrine', 'criado_em', 'atualizado_em', 'json', 'periodicidade'],
   VISITAS: ['id', 'email', 'vendedor', 'data', 'hora', 'cliente_id', 'cliente', 'cidade', 'status', 'status_descricao',
     'contato', 'telefone_contato', 'cargo', 'fornecedor_atual', 'precos_praticados', 'observacao', 'proximo_tipo',
     'proximo_data', 'fotos_fachada', 'fotos_vitrine', 'gps', 'precisao_gps_m', 'atualizado_em', 'json'],
@@ -27,11 +27,14 @@ const CAB = {
   PEDIDOS: ['pedido_id', 'item', 'data', 'hora', 'email', 'vendedor', 'cliente_id', 'cliente', 'cidade', 'tabela_preco',
     'produto', 'embalagem', 'quantidade', 'preco_embalagem', 'subtotal', 'total_pedido', 'volumes_pedido', 'condicoes',
     'vigencia_precos', 'atualizado_em'],
-  VENDEDORES: ['email', 'nome', 'ativo'],
+  METAS: ['mes', 'email', 'vendedor', 'meta_valor_rs', 'meta_visitas', 'meta_clientes_novos'],
+  VENDEDORES: ['email', 'nome', 'ativo', 'perfil'],
   CONFIG: ['chave', 'valor']
 };
 const COLS = { km: 'KM', clientes: 'CLIENTES', visitas: 'VISITAS' };
 const ATIVO = /^(sim|s|true|ativo|1)$/i;
+const PERIOD = { diario: 'Diário', '2xsem': '2x por semana', semanal: 'Semanal', quinzenal: 'Quinzenal', mensal: 'Mensal' };
+const SCHEMA = '2';
 
 /* ---------------- menu e configuração ---------------- */
 function onOpen() {
@@ -40,6 +43,8 @@ function onOpen() {
     .addItem('2. Ativar relatório D-1 diário', 'instalarGatilho')
     .addItem('Enviar relatório D-1 agora', 'relatorioD1')
     .addItem('Enviar relatório de HOJE (teste)', 'relatorioHoje')
+    .addSeparator()
+    .addItem('3. Criar linhas de metas do mês', 'criarMetasMes')
     .addToUi();
 }
 
@@ -87,8 +92,50 @@ function garantirAba(n, ss) {
     sh.getRange(1, 1, 1, CAB[n].length).setFontWeight('bold').setBackground('#3a2416').setFontColor('#ffffff');
     const jc = CAB[n].indexOf('json');
     if (jc >= 0) sh.hideColumns(jc + 1);
+  } else {
+    // planilhas antigas: completa colunas novas no fim do cabeçalho
+    const w = sh.getLastColumn();
+    if (w < CAB[n].length) {
+      const novas = CAB[n].slice(w);
+      sh.getRange(1, w + 1, 1, novas.length).setValues([novas]).setFontWeight('bold').setBackground('#3a2416').setFontColor('#ffffff');
+    }
   }
   return sh;
+}
+/** Atualiza a estrutura da planilha uma vez por versão do servidor. */
+function migrar() {
+  const p = PropertiesService.getScriptProperties();
+  if (p.getProperty('SCHEMA') === SCHEMA) return;
+  Object.keys(CAB).forEach(function (n) { garantirAba(n); });
+  p.setProperty('SCHEMA', SCHEMA);
+}
+/** Menu: cria uma linha por vendedor ativo para o mês atual na aba METAS (não apaga nada). */
+function criarMetasMes() {
+  migrar();
+  const mes = Utilities.formatDate(new Date(), TZ, 'yyyy-MM');
+  const sh = garantirAba('METAS');
+  const ja = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().map(function (r) { return r[0] + '|' + String(r[1]).toLowerCase(); }) : [];
+  const sv = aba('VENDEDORES');
+  const novos = (sv.getLastRow() > 1 ? sv.getRange(2, 1, sv.getLastRow() - 1, 3).getValues() : [])
+    .filter(function (r) { return r[0] && ATIVO.test(String(r[2]).trim()) && ja.indexOf(mes + '|' + String(r[0]).trim().toLowerCase()) < 0; })
+    .map(function (r) { return ["'" + mes, String(r[0]).trim().toLowerCase(), String(r[1] || '').trim(), '', '', '']; });
+  if (novos.length) sh.getRange(sh.getLastRow() + 1, 1, novos.length, 6).setValues(novos);
+  avisar(novos.length ? novos.length + ' linha(s) criadas em METAS para ' + mes + '. Preencha meta em R$, visitas e clientes novos.' : 'As metas de ' + mes + ' já existem na aba METAS.');
+}
+/** Aceita 2026-11, 11/2026 ou 01/11/2026 (quando a planilha converte para data). */
+function mesNorm(v) {
+  v = String(v).trim();
+  let m = v.match(/^(\d{4})-(\d{1,2})/); if (m) return m[1] + '-' + ('0' + m[2]).slice(-2);
+  m = v.match(/^(?:\d{1,2}\/)?(\d{1,2})\/(\d{4})$/); if (m) return m[2] + '-' + ('0' + m[1]).slice(-2);
+  return v.slice(0, 7);
+}
+function lerMetas(filtroEmail) {
+  const sh = aba('METAS');
+  if (!sh || sh.getLastRow() < 2) return [];
+  const num = function (v) { v = Number(String(v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return isFinite(v) ? v : 0; };
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 6).getDisplayValues()
+    .map(function (r) { return { mes: mesNorm(r[0]), email: String(r[1]).trim().toLowerCase(), valor: num(r[3]), visitas: num(r[4]), novos: num(r[5]) }; })
+    .filter(function (m) { return /^\d{4}-\d{2}$/.test(m.mes) && m.email && (!filtroEmail || m.email === filtroEmail); });
 }
 function getCfg(k) {
   if (!_cfg) {
@@ -122,11 +169,13 @@ function doPost(e) {
   try {
     const b = JSON.parse(e.postData.contents);
     if (b.acao === 'login') return saida(Object.assign({ ok: true }, login(b)));
+    migrar();
     const u = sessao(b.token);
     let out;
     if (b.acao === 'dados') out = dados(u);
     else if (b.acao === 'foto') out = salvarFoto(u, b);
     else if (b.acao === 'salvar') out = salvar(u, b);
+    else if (b.acao === 'painel') out = painel(u, b);
     else throw erro('Ação inválida', 'negado');
     return saida(Object.assign({ ok: true }, out));
   } catch (err) {
@@ -139,9 +188,9 @@ function vendedor(email) {
   const c = CacheService.getScriptCache(), k = 'v_' + email, h = c.get(k);
   if (h) return h === '-' ? null : JSON.parse(h);
   const sh = aba('VENDEDORES');
-  const rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
+  const rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues() : [];
   const r = rows.find(function (x) { return String(x[0]).trim().toLowerCase() === email && ATIVO.test(String(x[2]).trim()); });
-  const v = r ? { nome: String(r[1] || email).trim() } : null;
+  const v = r ? { nome: String(r[1] || email).trim(), gestor: /^gestor$/i.test(String(r[3]).trim()) } : null;
   c.put(k, v ? JSON.stringify(v) : '-', v ? 300 : 60);
   return v;
 }
@@ -163,7 +212,7 @@ function login(b) {
   Object.keys(tudo).forEach(function (k) {
     if (k.indexOf('s_') === 0) { try { if (JSON.parse(tudo[k]).exp < Date.now()) p.deleteProperty(k); } catch (e) { p.deleteProperty(k); } }
   });
-  return { token: token, email: email, nome: v.nome };
+  return { token: token, email: email, nome: v.nome, gestor: v.gestor };
 }
 
 function sessao(token) {
@@ -173,7 +222,7 @@ function sessao(token) {
   if (s.exp < Date.now()) throw erro('Sessão expirada', 'auth');
   const v = vendedor(s.email);
   if (!v) throw erro('Acesso desativado', 'auth');
-  return { email: s.email, nome: v.nome };
+  return { email: s.email, nome: v.nome, gestor: v.gestor };
 }
 
 /* ---------------- dados ---------------- */
@@ -190,7 +239,28 @@ function dados(u) {
   const mine = function (t) { return ler(t).filter(function (o) { return o.uid === u.email; }); };
   const vis = mine('VISITAS').sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 600);
   const km = mine('KM').sort(function (a, b) { return a.data < b.data ? 1 : -1; }).slice(0, 120);
-  return { km: km, clientes: mine('CLIENTES'), visitas: vis };
+  return { km: km, clientes: mine('CLIENTES'), visitas: vis, metas: lerMetas(u.email), gestor: u.gestor };
+}
+
+/** Painel do gestor: dados de toda a equipe no mês pedido (somente perfil GESTOR). */
+function painel(u, b) {
+  if (!u.gestor) throw erro('Acesso restrito ao gestor. Marque GESTOR na coluna perfil da aba VENDEDORES.', 'negado');
+  const mes = /^\d{4}-\d{2}$/.test(String(b.mes)) ? String(b.mes) : Utilities.formatDate(new Date(), TZ, 'yyyy-MM');
+  const sv = aba('VENDEDORES');
+  const vend = (sv.getLastRow() > 1 ? sv.getRange(2, 1, sv.getLastRow() - 1, 4).getValues() : [])
+    .filter(function (r) { return r[0] && ATIVO.test(String(r[2]).trim()) && !/^gestor$/i.test(String(r[3]).trim()); })
+    .map(function (r) { return { email: String(r[0]).trim().toLowerCase(), nome: String(r[1] || r[0]).trim() }; });
+  const todas = ler('VISITAS');
+  const ultPed = {};
+  todas.forEach(function (v) { if (v.pedido && v.pedido.total && (!ultPed[v.clienteId] || v.ts > ultPed[v.clienteId].ts)) ultPed[v.clienteId] = { ts: v.ts, total: v.pedido.total }; });
+  const leve = function (v) { const o = Object.assign({}, v); delete o.fotosFachada; delete o.fotosVitrine; delete o.fotoFachada; delete o.fotoVitrine; return o; };
+  const clientes = ler('CLIENTES').map(function (c) { const o = leve(c); if (ultPed[c.id]) { o.ultPedido = ultPed[c.id].ts; o.ultPedidoValor = ultPed[c.id].total; } return o; });
+  return {
+    mes: mes, vendedores: vend, metas: lerMetas().filter(function (m) { return m.mes === mes; }),
+    visitas: todas.filter(function (v) { return String(v.data).slice(0, 7) === mes; }).map(leve),
+    km: ler('KM').filter(function (k) { return String(k.data).slice(0, 7) === mes; }).map(function (k) { return { uid: k.uid, data: k.data, kmIni: k.kmIni, kmFim: k.kmFim }; }),
+    clientes: clientes
+  };
 }
 
 function linha(tab, id, o, u) {
@@ -202,7 +272,7 @@ function linha(tab, id, o, u) {
   if (tab === 'CLIENTES') return [id, u.email, u.nome, txt(o.nome), txt(o.cidade), txt(o.endereco), txt(o.telefoneLoja),
     o.status || '', ST[o.status] || '', dt(o.ultima), txt(o.contatoNome), txt(o.contatoTel), o.nVisitas || 0,
     o.proxTipo || '', o.proxData ? String(o.proxData).replace('T', ' ') : '', links([o.fotoFachada]), links([o.fotoVitrine]),
-    dt(o.criado), now, J];
+    dt(o.criado), now, J, PERIOD[o.periodicidade] || ''];
   return [id, u.email, u.nome, o.data, hora(o.ts), o.clienteId, txt(o.clienteNome), txt(o.cidade), o.status, ST[o.status] || '',
     txt(o.contatoNome), txt(o.contatoTel), txt(o.cargo), txt(o.fornecedor), txt(o.precos), txt(o.obs), o.proxTipo || '',
     o.proxData ? String(o.proxData).replace('T', ' ') : '', links(o.fotosFachada), links(o.fotosVitrine), mapa(o.gps),

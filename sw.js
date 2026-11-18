@@ -1,5 +1,5 @@
 /* Service worker: guarda o app no aparelho para abrir mesmo sem internet. */
-const V = 'villa-vendas-v5';
+const V = 'villa-vendas-v6';
 const ARQ = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'precos.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo.png', 'icons/logo-h.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(ARQ))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k))))); self.clients.claim(); });
