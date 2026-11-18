@@ -119,7 +119,9 @@ function criarMetasMes() {
   const novos = (sv.getLastRow() > 1 ? sv.getRange(2, 1, sv.getLastRow() - 1, 4).getValues() : [])
     .filter(function (r) { return r[0] && ATIVO.test(String(r[2]).trim()) && !/^gestor$/i.test(String(r[3]).trim()) && ja.indexOf(mes + '|' + String(r[0]).trim().toLowerCase()) < 0; })
     .map(function (r) { return ["'" + mes, String(r[0]).trim().toLowerCase(), String(r[1] || '').trim(), '', '', '']; });
-  if (novos.length) sh.getRange(sh.getLastRow() + 1, 1, novos.length, 6).setValues(novos);
+  // grava logo abaixo da última linha preenchida na coluna A (a coluna H tem a orientação de preenchimento)
+  const ultA = sh.getRange('A1:A').getValues().map(function (r) { return r[0] !== ''; }).lastIndexOf(true) + 1;
+  if (novos.length) sh.getRange(ultA + 1, 1, novos.length, 6).setValues(novos);
   avisar(novos.length ? novos.length + ' linha(s) criadas em METAS para ' + mes + '. Preencha meta em R$, visitas e clientes novos.' : 'As metas de ' + mes + ' já existem na aba METAS.');
 }
 /** Aceita 2026-11, 11/2026 ou 01/11/2026 (quando a planilha converte para data). */
