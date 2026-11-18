@@ -103,6 +103,44 @@ const phBox=(key,label,ref,req)=>{const L=arr(ref),up=S.up===key;return `<div cl
   <div class="phb"><label for="cam-${key}" role="button" tabindex="0">${up?'Processando…':L.length?'+ Tirar outra':'Tirar foto'}</label><label for="gal-${key}" class="alt" role="button" tabindex="0">${L.length?'+ Galeria':'Galeria (várias)'}</label></div></div>`};
 const gcal=(t,dt,det,loc)=>{const d=new Date(dt),e=new Date(d.getTime()+1800000),f=x=>x.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(t)+'&dates='+f(d)+'/'+f(e)+'&details='+encodeURIComponent(det||'')+'&location='+encodeURIComponent(loc||'')};
 const wa=t=>{let d=digits(t);if(!d)return '';if(d.length<=11)d='55'+d;return 'https://wa.me/'+d};
+const waTxt=(url,txt)=>url?url+'?text='+encodeURIComponent(txt):'';
+/* ---------- pedido (preços em precos.js) ---------- */
+const P=(()=>{const p=window.VILLA_PRECOS;return p&&Array.isArray(p.categorias)&&Array.isArray(p.tabelas)?p:null})();
+const brl=v=>'R$ '+Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+const r2=v=>Math.round(v*100)/100;
+const PROD={};
+if(P)P.categorias.forEach((c,ci)=>(c.itens||[]).forEach(it=>{if(it.foraDaTabela)return;(it.emb||[]).forEach(e=>{const k=it.msg+'|'+e.tipo;PROD[k]={k,ci,nome:it.nome,msg:it.msg,ordem:+it.ordem||0,por:it.por,tipo:e.tipo,mult:+e.mult,aprox:e.aprox,precos:it.precos}})}));
+const precoEmb=(p,t)=>r2(Number(p.precos[t])*p.mult);
+const tabIdx=()=>{const t=S.v&&S.v.tab;return Number.isInteger(t)?t:(P?P.tabelaPadrao||0:0)};
+function montaPedido(q,t){
+  const itens=Object.keys(q||{}).filter(k=>q[k]>0&&PROD[k]).map(k=>{const p=PROD[k],pe=precoEmb(p,t);return {produto:p.nome,msg:p.msg,emb:p.tipo,qtd:q[k],preco:pe,sub:r2(pe*q[k]),ordem:p.ordem}}).sort((a,b)=>a.ordem-b.ordem);
+  return {tabela:P.tabelas[t],vigencia:P.vigencia,itens,total:r2(itens.reduce((s,i)=>s+i.sub,0)),volumes:itens.reduce((s,i)=>s+i.qtd,0)};
+}
+function msgPedido(p,cliente,paraCliente){
+  return '*PEDIDO VILLA CROCANTE · TABELA '+String(p.tabela).toUpperCase()+'*\n'+(cliente?'Cliente: '+cliente+'\n':'')+'Qtd x Produto | Embalagem | Valor\n\n'
+    +p.itens.map(i=>i.qtd+'x '+i.msg+' | '+i.emb+' | '+brl(i.sub)).join('\n')
+    +'\n\n*Total estimado: '+brl(p.total)+'* ('+p.volumes+(p.volumes>1?' volumes':' volume')+')'+(p.cond?'\nCondições: '+p.cond:'')
+    +'\nVendedor: '+S.nome+'\n\n'+(paraCliente?'Pedido sujeito à confirmação de disponibilidade e entrega pela Villa Crocante. Obrigado!':'Pode confirmar disponibilidade e entrega?');
+}
+const pedLinks=(p,cliente,tel)=>{const c=waTxt(wa(tel),msgPedido(p,cliente,1)),f=P&&P.whatsappComercial?waTxt('https://wa.me/'+P.whatsappComercial,msgPedido(p,cliente,0)):'';
+  return `${c?`<a class="btn wa" href="${esc(c)}" target="_blank" rel="noopener">Enviar pedido ao cliente (WhatsApp)</a>`:''}${f?`<a class="btn sec" href="${esc(f)}" target="_blank" rel="noopener">Enviar pedido ao comercial</a>`:''}`};
+const pedResumo=p=>`<ul class="plist">${p.itens.map(i=>`<li><span>${i.qtd}x ${esc(i.msg)} <small>${esc(i.emb)}</small></span><b>${brl(i.sub)}</b></li>`).join('')}</ul><div class="ptot"><span>Total · ${p.volumes} ${p.volumes>1?'volumes':'volume'}</span><b>${brl(p.total)}</b></div>`;
+function vPedido(){
+  if(!P)return `<div class="card"><h3>Pedido</h3><p class="erro">Tabela de preços não carregada. Abra o app com internet e tente de novo.</p></div>`;
+  const v=S.v,t=tabIdx(),q=v.ped||{},op=v.open||{};
+  const cat=(c,ci)=>{const n=Object.keys(q).filter(k=>q[k]>0&&PROD[k]&&PROD[k].ci===ci).reduce((s,k)=>s+q[k],0);
+    return `<details class="pcat" data-ci="${ci}" ${op[ci]?'open':''}><summary>${esc(c.nome)}<span class="pn" data-cn="${ci}">${n?n+' vol.':''}</span></summary>${(c.itens||[]).map(it=>it.foraDaTabela?`<div class="pit"><div class="pnm">${esc(it.nome)}</div><div class="sub">Fora da tabela do vendedor: consultar preço com a fábrica.</div></div>`
+      :`<div class="pit"><div class="pnm">${esc(it.nome)}</div>${(it.emb||[]).map(e=>{const p=PROD[it.msg+'|'+e.tipo],k=p.k,qq=q[k]||0;
+        return `<div class="prow"><div class="sub"><b>${esc(e.tipo)}</b> · ${brl(precoEmb(p,t))}<br>${brl(it.precos[t])}/${esc(it.por)}${e.aprox?' · aprox. '+e.aprox+' un':''}</div>
+        <div class="step ${qq?'on':''}"><button type="button" data-a="pq" data-id="${esc(k)}" data-d="-1" aria-label="Tirar 1 ${esc(it.nome)} ${esc(e.tipo)}">−</button><output>${qq}</output><button type="button" data-a="pq" data-id="${esc(k)}" data-d="1" aria-label="Adicionar 1 ${esc(it.nome)} ${esc(e.tipo)}">+</button></div></div>`}).join('')}</div>`).join('')}</details>`};
+  return `<div class="card"><h3>Pedido</h3><p class="mute">Preços ${esc(P.vigencia)}. Escolha a tabela e marque os volumes.</p>
+   <div class="chips" role="radiogroup" aria-label="Tabela de preços">${P.tabelas.map((n,i)=>`<button class="chip ${t===i?'on':''}" role="radio" aria-checked="${t===i}" data-a="ptab" data-id="${i}">${esc(n)}</button>`).join('')}</div>
+   <div style="margin-top:12px">${P.categorias.map(cat).join('')}</div>
+   <div id="ped-res">${pedRes()}</div>
+   <label class="f">Condições de pagamento / entrega (opcional)<input data-f="v.pcond" value="${esc(v.pcond||'')}" placeholder="Ex.: boleto 14 dias, entrega quinta"></label>
+   ${P.aviso?`<p class="mute" style="margin:10px 0 0;font-size:13px">${esc(P.aviso)}</p>`:''}</div>`;
+}
+function pedRes(){const p=montaPedido(S.v.ped,tabIdx());return p.itens.length?`<h3 style="margin:16px 0 6px">Resumo · tabela ${esc(p.tabela)}</h3>`+pedResumo(p):'<p class="empty" style="margin:14px 0 0">Nenhum item marcado. Sem itens, a venda é salva sem pedido.</p>'}
 
 /* ---------- views ---------- */
 function vHoje(){
@@ -125,6 +163,7 @@ function vHoje(){
   return `<div class="card">${km}</div>
   <h3 style="margin:4px 0 10px">Hoje em números</h3>
   <div class="stats"><div><b>${vh.length}</b><span>Visitas</span></div><div><b>${cnt('ok')}</b><span>Vendas</span></div><div><b>${cnt('warn')}</b><span>Degustações</span></div><div><b>${cnt('bad')}</b><span>Não vendas</span></div></div>
+  ${(()=>{const pv=vh.filter(x=>x.pedido&&x.pedido.total);return pv.length?`<p class="mute" style="margin:10px 0 0">Pedidos hoje: <b>${pv.length}</b> · <b>${brl(pv.reduce((s,x)=>s+x.pedido.total,0))}</b></p>`:''})()}
   ${hist.length?`<div class="card" style="margin-top:14px"><h3>Últimos dias</h3><table class="hist">${hist.map(x=>`<tr><td>${fd(x.data)} · ${nf(x.kmIni)} → ${nf(x.kmFim)}</td><td>${nf(x.kmFim-x.kmIni)} km</td></tr>`).join('')}</table></div>`:''}
   <button class="btn" data-a="nova">Registrar visita</button>`;
 }
@@ -157,6 +196,7 @@ function vCliente(){
    ${v.fornecedor?`<div class="q"><b>Fornecedor atual:</b> ${esc(v.fornecedor)}</div><div class="q"><b>Preços praticados:</b> ${esc(v.precos)}</div>`:''}
    ${v.gps?`<div class="q"><a href="https://maps.google.com/?q=${v.gps.lat},${v.gps.lng}" target="_blank" rel="noopener">Ver local da visita no mapa</a> (±${v.gps.acc} m)</div>`:''}
    ${v.obs?`<div class="q"><b>Obs.:</b> ${esc(v.obs)}</div>`:''}
+   ${v.pedido&&v.pedido.itens?`<details class="q pdet"><summary><b>Pedido:</b> ${brl(v.pedido.total)} · ${v.pedido.volumes} vol. · tabela ${esc(v.pedido.tabela)}</summary>${pedResumo(v.pedido)}${v.pedido.cond?`<div class="sub">Condições: ${esc(v.pedido.cond)}</div>`:''}<div class="links">${(()=>{const u=waTxt(wa(c.contatoTel),msgPedido(v.pedido,c.nome,1));return u?`<a href="${esc(u)}" target="_blank" rel="noopener">Reenviar ao cliente</a>`:''})()}</div></details>`:''}
    ${v.proxData?`<div class="q"><b>Agendado:</b> ${esc(v.proxTipo)} em ${fdt(v.proxData)}</div>`:''}
    ${(()=>{const h=ths(v.fotosFachada||v.fotoFachada,'Fachada')+ths(v.fotosVitrine||v.fotoVitrine,'Vitrine');return h?`<div class="thumbs">${h}</div>`:''})()}</div>`).join('')||'<p class="empty">Sem visitas.</p>'}</div>`;
 }
@@ -180,6 +220,7 @@ function vVisita(){
    ${v.status==='nv_preco'?`<label class="f">Fornecedor atual <span class="req">*</span><input data-f="v.forn" value="${esc(v.forn||'')}"></label>
    <label class="f">Preços praticados <span class="req">*</span><textarea data-f="v.precos" placeholder="Ex.: pão de queijo 1 kg R$ 28,00; coxinha cx 50 un R$ 45,00">${esc(v.precos||'')}</textarea></label>`:''}
    ${v.status?`<label class="f">${nv?'Motivo da não venda (opcional)':'Observações (opcional)'}<textarea data-f="v.obs">${esc(v.obs||'')}</textarea></label>`:''}</div>
+  ${v.status==='venda'?vPedido():''}
   <div class="card"><h3>Próximo passo</h3>
    <div class="row"><label class="f">Tipo<select data-f="v.ptipo"><option value="">Nenhum</option>${PROX.map(p=>`<option ${v.ptipo===p?'selected':''}>${p}</option>`).join('')}</select></label>
    <label class="f">Data e hora<input type="datetime-local" data-f="v.pdata" value="${esc(v.pdata||'')}"></label></div></div>
@@ -189,8 +230,9 @@ function vVisita(){
 function vOk(){
   const o=S.ok;
   return `<div class="card" style="text-align:center"><h2>Visita registrada</h2><p class="mute">${esc(o.nome)} · ${fdt(o.ts)}</p>${pill(o.status)}
-  ${o.proxData?`<a class="btn" href="${esc(gcal(o.proxTipo+' – '+o.nome,o.proxData,'Villa Crocante · '+o.contato,o.local))}" target="_blank" rel="noopener">Adicionar ao Google Agenda</a>`:''}
-  <button class="btn ${o.proxData?'sec':''}" data-a="cli" data-id="${esc(o.cid)}">Ver cliente</button><button class="btn sec" data-a="nova">Registrar outra visita</button></div>`;
+  ${o.pedido?`<div style="text-align:left;margin-top:14px"><h3>Pedido · tabela ${esc(o.pedido.tabela)}</h3>${pedResumo(o.pedido)}</div>${pedLinks(o.pedido,o.nome,o.tel)}`:''}
+  ${o.proxData?`<a class="btn ${o.pedido?'sec':''}" href="${esc(gcal(o.proxTipo+' – '+o.nome,o.proxData,'Villa Crocante · '+o.contato,o.local))}" target="_blank" rel="noopener">Adicionar ao Google Agenda</a>`:''}
+  <button class="btn ${o.proxData||o.pedido?'sec':''}" data-a="cli" data-id="${esc(o.cid)}">Ver cliente</button><button class="btn sec" data-a="nova">Registrar outra visita</button></div>`;
 }
 function vAgenda(){
   const now=Date.now(),d=hoje();
@@ -213,6 +255,7 @@ function render(){
   $('#nav').innerHTML=[['hoje','Hoje','hoje'],['clientes','Clientes','clientes'],['visita','Visita','mais'],['agenda','Agenda','agenda'],['hist','KM','hist']].map(([v,t,i])=>v==='visita'?`<button class="fab" data-a="nova" aria-label="Nova visita"><i>${svg(i)}</i>${t}</button>`:`<button class="${tab===v?'on':''}" data-a="go" data-id="${v==='hist'?'hoje':v}">${svg(i)}${t}</button>`).join('');
 }
 function soft(){const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&S.view!=='clientes'){S.pend=true;return}render()}
+document.addEventListener('toggle',e=>{const d=e.target;if(d.classList&&d.classList.contains('pcat')&&S.v){(S.v.open=S.v.open||{})[d.dataset.ci]=d.open}},true);
 document.addEventListener('focusout',()=>{if(S.pend){S.pend=false;setTimeout(()=>{const a=document.activeElement;if(!a||!/INPUT|TEXTAREA|SELECT/.test(a.tagName))render();else S.pend=true},400)}});
 
 function setp(p,val){const k=p.split('.');if(k.length===1)S[k[0]]=val;else S[k[0]][k[1]]=val}
@@ -235,6 +278,11 @@ document.addEventListener('click',async e=>{
   else if(a==='filtro'){S.filtro=id;render()}
   else if(a==='nova'){const c=id&&S.cli.find(x=>x.id===id);S.v={cid:c?c.id:'',cnome:c?c.contatoNome:'',ctel:c?c.contatoTel:''};S.cid=c?c.id:S.cid;S.view='visita';scrollTo(0,0);render()}
   else if(a==='st'){S.v.status=id;render()}
+  else if(a==='ptab'){S.v.tab=+id;render()}
+  else if(a==='pq'){const q=S.v.ped=S.v.ped||{},n=Math.max(0,(q[id]||0)+(+el.dataset.d));if(n)q[id]=n;else delete q[id];
+    const st=el.parentElement;st.querySelector('output').textContent=n;st.classList.toggle('on',n>0);
+    const ci=PROD[id].ci,cn=Object.keys(q).filter(k=>PROD[k]&&PROD[k].ci===ci).reduce((s,k)=>s+q[k],0),ce=document.querySelector('[data-cn="'+ci+'"]');if(ce)ce.textContent=cn?cn+' vol.':'';
+    const r=$('#ped-res');if(r)r.innerHTML=pedRes()}
   else if(a==='rmph'){const l=arr(getp(id));l.splice(+el.dataset.i,1);setp(id,l);render()}
   else if(a==='zoom'){if(!el.src)return;$('#lb img').src=el.src;$('#lb').classList.add('on')}
   else if(a==='sair'){if(S.fila.length)return toast('Ainda há registros não enviados. Conecte-se à internet antes de sair.');sair()}
@@ -273,10 +321,11 @@ async function salvarVisita(){
     const base=novo?{uid:S.uid,nome:v.nn.trim(),cidade:v.ncid.trim(),endereco:(v.nend||'').trim(),telefoneLoja:(v.ntel||'').trim(),criado:now,nVisitas:0}:(({id,...r})=>r)(c);
     const pr=v.ptipo?{proxTipo:v.ptipo,proxData:v.pdata}:{proxTipo:null,proxData:null};
     const preco=v.status==='nv_preco';
+    let pedido=null;if(v.status==='venda'&&P){const p=montaPedido(v.ped,tabIdx());if(p.itens.length){if((v.pcond||'').trim())p.cond=v.pcond.trim();pedido=p}}
     const g=await gps();if(!g)toast('Visita salva sem localização: ative o GPS e permita o acesso à localização.');
-    await put('visitas',nid(),{gps:g,uid:S.uid,clienteId:cid,clienteNome:base.nome,cidade:base.cidade,data:hoje(),ts:now,fotoFachada:arr(v.fachada)[0]||null,fotoVitrine:arr(v.vitrine)[0]||null,fotosFachada:arr(v.fachada),fotosVitrine:arr(v.vitrine),contatoNome:v.cnome.trim(),contatoTel:v.ctel.trim(),cargo:(v.cargo||'').trim(),status:v.status,obs:(v.obs||'').trim(),fornecedor:preco?v.forn.trim():null,precos:preco?v.precos.trim():null,...pr});
+    await put('visitas',nid(),{gps:g,uid:S.uid,clienteId:cid,clienteNome:base.nome,cidade:base.cidade,data:hoje(),ts:now,fotoFachada:arr(v.fachada)[0]||null,fotoVitrine:arr(v.vitrine)[0]||null,fotosFachada:arr(v.fachada),fotosVitrine:arr(v.vitrine),contatoNome:v.cnome.trim(),contatoTel:v.ctel.trim(),cargo:(v.cargo||'').trim(),status:v.status,obs:(v.obs||'').trim(),fornecedor:preco?v.forn.trim():null,precos:preco?v.precos.trim():null,pedido,...pr});
     await put('clientes',cid,{...base,status:v.status,ultima:now,contatoNome:v.cnome.trim(),contatoTel:v.ctel.trim(),nVisitas:(base.nVisitas||0)+1,fotoFachada:arr(v.fachada)[0]||base.fotoFachada||null,fotoVitrine:arr(v.vitrine)[0]||base.fotoVitrine||null,...pr});
-    S.ok={cid,nome:base.nome,ts:now,status:v.status,contato:v.cnome+' '+v.ctel,local:base.endereco||base.cidade,...pr};S.v=null;S.view='ok';scrollTo(0,0);
+    S.ok={cid,nome:base.nome,ts:now,status:v.status,contato:v.cnome+' '+v.ctel,tel:v.ctel,pedido,local:base.endereco||base.cidade,...pr};S.v=null;S.view='ok';scrollTo(0,0);
   }catch(e){toast('Não foi possível salvar: '+(e.code||e.message))}
   S.busy=false;render();
 }

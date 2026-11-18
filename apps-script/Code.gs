@@ -1,6 +1,6 @@
 /**
  * Villa Crocante – App de Vendas Externo – servidor (Google Apps Script)
- * Guarda os dados na planilha (abas KM, CLIENTES, VISITAS), as fotos no Google Drive
+ * Guarda os dados na planilha (abas KM, CLIENTES, VISITAS, PEDIDOS), as fotos no Google Drive
  * e envia o relatório D-1 por e-mail.
  *
  * Primeiro uso: menu "App Vendas" > "1. Configurar planilha" (ou rode a função setup).
@@ -24,6 +24,9 @@ const CAB = {
     'proximo_data', 'fotos_fachada', 'fotos_vitrine', 'gps', 'precisao_gps_m', 'atualizado_em', 'json'],
   RESUMO_DIARIO: ['data', 'vendedor', 'email', 'km_rodados', 'situacao_km', 'visitas', 'vendas', 'degustacoes',
     'negociacoes', 'nao_vendas', 'conversao_%', 'primeira_visita', 'ultima_visita', 'visitas_sem_gps', 'agenda_atrasada'],
+  PEDIDOS: ['pedido_id', 'item', 'data', 'hora', 'email', 'vendedor', 'cliente_id', 'cliente', 'cidade', 'tabela_preco',
+    'produto', 'embalagem', 'quantidade', 'preco_embalagem', 'subtotal', 'total_pedido', 'volumes_pedido', 'condicoes',
+    'vigencia_precos', 'atualizado_em'],
   VENDEDORES: ['email', 'nome', 'ativo'],
   CONFIG: ['chave', 'valor']
 };
@@ -44,16 +47,7 @@ function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   PropertiesService.getScriptProperties().setProperty('SHEET_ID', ss.getId());
   ss.setSpreadsheetTimeZone(TZ);
-  Object.keys(CAB).forEach(function (n) {
-    const sh = ss.getSheetByName(n) || ss.insertSheet(n);
-    if (sh.getLastRow() === 0) {
-      sh.appendRow(CAB[n]);
-      sh.setFrozenRows(1);
-      sh.getRange(1, 1, 1, CAB[n].length).setFontWeight('bold').setBackground('#3a2416').setFontColor('#ffffff');
-    }
-    const jc = CAB[n].indexOf('json');
-    if (jc >= 0) sh.hideColumns(jc + 1);
-  });
+  Object.keys(CAB).forEach(function (n) { garantirAba(n, ss); });
   ['Página1', 'Sheet1', 'Planilha1'].forEach(function (n) {
     const s = ss.getSheetByName(n);
     if (s && s.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(s);
@@ -83,6 +77,19 @@ function planilha() {
   return _ss;
 }
 function aba(n) { return planilha().getSheetByName(n); }
+/** Cria a aba com o cabeçalho, se ainda não existir (planilhas antigas ganham PEDIDOS sozinhas). */
+function garantirAba(n, ss) {
+  ss = ss || planilha();
+  const sh = ss.getSheetByName(n) || ss.insertSheet(n);
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(CAB[n]);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, CAB[n].length).setFontWeight('bold').setBackground('#3a2416').setFontColor('#ffffff');
+    const jc = CAB[n].indexOf('json');
+    if (jc >= 0) sh.hideColumns(jc + 1);
+  }
+  return sh;
+}
 function getCfg(k) {
   if (!_cfg) {
     _cfg = {};
@@ -211,6 +218,7 @@ function salvar(u, b) {
   delete o.id; o.uid = u.email;
   if (tab === 'KM' && o.kmFim != null && Number(o.kmFim) < Number(o.kmIni)) throw erro('KM final menor que o inicial', 'negado');
   if (tab === 'VISITAS' && !ST[o.status]) throw erro('Status de visita inválido', 'negado');
+  if (tab === 'VISITAS') o.pedido = limparPedido(o.pedido);
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -222,8 +230,41 @@ function salvar(u, b) {
       if (dono !== u.email) throw erro('Este registro pertence a outro vendedor', 'negado');
       sh.getRange(hit.getRow(), 1, 1, row.length).setValues([row]);
     } else sh.appendRow(row);
+    if (tab === 'VISITAS') gravarPedido(id, o, u);
   } finally { lock.releaseLock(); }
   return {};
+}
+
+/* ---------------- pedidos ---------------- */
+/** Confere o pedido vindo do app e recalcula subtotais e total no servidor. */
+function limparPedido(p) {
+  if (!p || !Array.isArray(p.itens)) return null;
+  const n = function (x) { x = Number(x); return isFinite(x) ? x : NaN; };
+  const r2 = function (x) { return Math.round(x * 100) / 100; };
+  const itens = p.itens.map(function (i) {
+    const q = n(i.qtd), pr = n(i.preco);
+    if (!(q > 0) || q !== Math.floor(q) || q > 9999 || !(pr >= 0) || pr > 99999) throw erro('Item de pedido inválido', 'negado');
+    return { produto: String(i.produto || ''), msg: String(i.msg || i.produto || ''), emb: String(i.emb || ''), qtd: q, preco: r2(pr), sub: r2(q * pr), ordem: n(i.ordem) || 0 };
+  });
+  if (!itens.length) return null;
+  return { tabela: String(p.tabela || ''), vigencia: String(p.vigencia || ''), cond: String(p.cond || ''), itens: itens,
+    total: r2(itens.reduce(function (s, i) { return s + i.sub; }, 0)), volumes: itens.reduce(function (s, i) { return s + i.qtd; }, 0) };
+}
+
+/** Uma linha por item na aba PEDIDOS; regrava as linhas se a visita for reenviada. */
+function gravarPedido(id, o, u) {
+  const sh = garantirAba('PEDIDOS');
+  const achados = sh.getRange('A:A').createTextFinder(id).matchEntireCell(true).findAll();
+  achados.map(function (c) { return c.getRow(); }).filter(function (r) { return r > 1; })
+    .sort(function (a, b) { return b - a; }).forEach(function (r) { sh.deleteRow(r); });
+  const p = o.pedido;
+  if (!p) return;
+  const now = new Date();
+  const rows = p.itens.map(function (i, k) {
+    return [id, k + 1, o.data, hora(o.ts), u.email, u.nome, o.clienteId, txt(o.clienteNome), txt(o.cidade), txt(p.tabela),
+      txt(i.msg), txt(i.emb), i.qtd, i.preco, i.sub, p.total, p.volumes, txt(p.cond), txt(p.vigencia), now];
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
 }
 
 function salvarFoto(u, b) {
@@ -293,6 +334,8 @@ function relatorioD1(diaOpcional, teste) {
   // e-mail
   const T = L.reduce(function (a, x) { a.km += Number(x.kmR || 0); a.n += x.n; a.venda += x.venda; a.deg += x.deg; a.neg += x.neg; a.nv += x.nv; return a; },
     { km: 0, n: 0, venda: 0, deg: 0, neg: 0, nv: 0 });
+  const reais = function (v) { return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); };
+  T.ped = vis.reduce(function (s, x) { return s + (x.pedido && x.pedido.total || 0); }, 0);
   const conv = T.n ? Math.round(T.venda / T.n * 100) : 0;
   const esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   const th = 'style="text-align:left;padding:8px;background:#3a2416;color:#fff;font-size:12px"';
@@ -309,7 +352,7 @@ function relatorioD1(diaOpcional, teste) {
   };
   let h = '<div style="font-family:Arial,sans-serif;color:#22160d;max-width:760px">';
   h += '<div style="background:#3a2416;color:#fff;padding:16px 18px;border-radius:10px 10px 0 0"><div style="font-size:20px;font-weight:800">Vendas externas · ' + diaBr + '</div><div style="font-size:13px;opacity:.8">' + (teste ? 'TESTE · dados de hoje até ' + agora.slice(11) + ' (parcial)' : 'Relatório D-1') + ' · Villa Crocante</div></div>';
-  h += '<table style="border-collapse:separate;border-spacing:8px;margin:8px 0"><tr>' + card('Visitas', T.n) + card('Vendas', T.venda) + card('Conversão', conv + '%') + card('Degustações', T.deg) + card('Não vendas', T.nv) + card('KM rodados', T.km) + '</tr></table>';
+  h += '<table style="border-collapse:separate;border-spacing:8px;margin:8px 0"><tr>' + card('Visitas', T.n) + card('Vendas', T.venda) + card('Conversão', conv + '%') + card('Degustações', T.deg) + card('Não vendas', T.nv) + card('KM rodados', T.km) + card('Pedidos', reais(T.ped)) + '</tr></table>';
   h += '<h3 style="margin:16px 0 6px">Por vendedor</h3><table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>Vendedor</th><th ' + th + '>KM</th><th ' + th + '>Visitas</th><th ' + th + '>Vendas</th><th ' + th + '>Degust.</th><th ' + th + '>Negoc.</th><th ' + th + '>Não venda</th><th ' + th + '>Conv.</th><th ' + th + '>1ª / última</th><th ' + th + '>Alertas</th></tr>';
   L.forEach(function (x) {
     h += '<tr><td ' + td + '><b>' + esc(x.v.nome) + '</b></td><td ' + tdr + '>' + (x.kmR === '' ? '–' : x.kmR) + '</td><td ' + tdr + '>' + x.n + '</td><td ' + tdr + '>' + x.venda + '</td><td ' + tdr + '>' + x.deg + '</td><td ' + tdr + '>' + x.neg + '</td><td ' + tdr + '>' + x.nv + '</td><td ' + tdr + '>' + x.conv + '%</td><td ' + td + '>' + (x.ini ? x.ini + ' – ' + x.fim : '–') + '</td><td ' + td + '>' + alerta(x) + '</td></tr>';
@@ -333,10 +376,10 @@ function relatorioD1(diaOpcional, teste) {
   const vendas = vis.filter(function (x) { return x.status === 'venda'; });
   if (vendas.length) {
     h += '<h3 style="margin:18px 0 6px">Negócios fechados</h3><ul style="font-size:13px;padding-left:18px">';
-    vendas.forEach(function (x) { h += '<li>' + esc(x.clienteNome) + ' (' + esc(x.cidade) + ')' + (x.obs ? ' – ' + esc(x.obs) : '') + '</li>'; });
+    vendas.forEach(function (x) { h += '<li>' + esc(x.clienteNome) + ' (' + esc(x.cidade) + ')' + (x.pedido ? ' – <b>pedido ' + reais(x.pedido.total) + '</b>, ' + x.pedido.volumes + ' vol., tabela ' + esc(x.pedido.tabela) : ' – sem pedido') + (x.obs ? ' – ' + esc(x.obs) : '') + '</li>'; });
     h += '</ul>';
   }
-  h += '<p style="font-size:12px;color:#6f5e50;margin-top:18px">Detalhes, fotos e localização nas abas VISITAS, KM e RESUMO_DIARIO da planilha: <a href="' + planilha().getUrl() + '">abrir planilha</a>.</p></div>';
+  h += '<p style="font-size:12px;color:#6f5e50;margin-top:18px">Detalhes, fotos e localização nas abas VISITAS, PEDIDOS, KM e RESUMO_DIARIO da planilha: <a href="' + planilha().getUrl() + '">abrir planilha</a>.</p></div>';
 
   const para = getCfg('RELATORIO_EMAILS');
   if (!para) return avisar('Relatório não enviado: preencha RELATORIO_EMAILS na aba CONFIG.');

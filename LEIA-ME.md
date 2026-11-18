@@ -70,6 +70,18 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
 - **Provas da visita:** as fotos recebem uma marca com vendedor, data e hora. Cada visita grava a localização GPS, com link para o mapa na planilha. Visitas sem GPS aparecem como alerta no relatório.
 - **Relatório D-1:** KM rodados, visitas, vendas, degustações, negociações, não vendas, conversão, horário da primeira e da última visita, alertas (KM não encerrado, sem GPS, agenda atrasada), motivos de não venda e preços da concorrência. Todo dia o histórico também é gravado na aba RESUMO_DIARIO.
 
+## Pedido na visita
+- Ao marcar **Venda – negócio fechado**, aparece o cartão **Pedido**: o vendedor escolhe a tabela (**Especial 1**, **Padrão** ou **Especial 2**) e marca os volumes de cada produto. O total é calculado na hora.
+- Ao salvar, o pedido vai para a aba **PEDIDOS**, uma linha por item, e a tela final mostra os botões **Enviar pedido ao cliente (WhatsApp)** e **Enviar pedido ao comercial**.
+- O pedido aparece no histórico do cliente, com botão para reenviar, e o valor entra no relatório D-1.
+- A aba PEDIDOS é criada sozinha no primeiro pedido; não é preciso rodar a configuração de novo.
+
+## Atualizar preços
+Os preços ficam só no arquivo **`precos.js`**, espelho do *Simulador de Pedidos Vendedores*:
+- `precos: [Especial 1, Padrão, Especial 2]`: preço por unidade, pedaço, kg ou pacote de 800 g.
+- `mult`: quantas vezes o preço cabe na embalagem (pct 5 un = 5; pão de queijo 2 kg = 2,5; mini salgado 800 g = 0,8).
+- Troque `vigencia` e publique. Os celulares recebem a tabela nova na próxima abertura com internet.
+
 ## Problemas comuns
 | Sintoma | Causa e solução |
 |---|---|
