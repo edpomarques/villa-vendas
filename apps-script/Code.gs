@@ -114,17 +114,17 @@ function criarMetasMes() {
   migrar();
   const mes = Utilities.formatDate(new Date(), TZ, 'yyyy-MM');
   const sh = garantirAba('METAS');
-  const ja = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().map(function (r) { return r[0] + '|' + String(r[1]).toLowerCase(); }) : [];
+  const ja = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().map(function (r) { return mesNorm(r[0]) + '|' + String(r[1]).trim().toLowerCase(); }) : [];
   const sv = aba('VENDEDORES');
-  const novos = (sv.getLastRow() > 1 ? sv.getRange(2, 1, sv.getLastRow() - 1, 3).getValues() : [])
-    .filter(function (r) { return r[0] && ATIVO.test(String(r[2]).trim()) && ja.indexOf(mes + '|' + String(r[0]).trim().toLowerCase()) < 0; })
+  const novos = (sv.getLastRow() > 1 ? sv.getRange(2, 1, sv.getLastRow() - 1, 4).getValues() : [])
+    .filter(function (r) { return r[0] && ATIVO.test(String(r[2]).trim()) && !/^gestor$/i.test(String(r[3]).trim()) && ja.indexOf(mes + '|' + String(r[0]).trim().toLowerCase()) < 0; })
     .map(function (r) { return ["'" + mes, String(r[0]).trim().toLowerCase(), String(r[1] || '').trim(), '', '', '']; });
   if (novos.length) sh.getRange(sh.getLastRow() + 1, 1, novos.length, 6).setValues(novos);
   avisar(novos.length ? novos.length + ' linha(s) criadas em METAS para ' + mes + '. Preencha meta em R$, visitas e clientes novos.' : 'As metas de ' + mes + ' já existem na aba METAS.');
 }
 /** Aceita 2026-11, 11/2026 ou 01/11/2026 (quando a planilha converte para data). */
 function mesNorm(v) {
-  v = String(v).trim();
+  v = String(v).trim().replace(/^'/, '');
   let m = v.match(/^(\d{4})-(\d{1,2})/); if (m) return m[1] + '-' + ('0' + m[2]).slice(-2);
   m = v.match(/^(?:\d{1,2}\/)?(\d{1,2})\/(\d{4})$/); if (m) return m[2] + '-' + ('0' + m[1]).slice(-2);
   return v.slice(0, 7);
