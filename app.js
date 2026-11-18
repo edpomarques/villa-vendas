@@ -331,7 +331,7 @@ async function salvarVisita(){
 }
 function vLogin(){
   const semCfg=!CFG.API_URL||!CFG.GOOGLE_CLIENT_ID;
-  return `<div class="card login"><h2>Entrar no app</h2><p class="mute">Use o e-mail Google cadastrado pela Villa Crocante.</p><div id="gbtn"></div>
+  return `<div class="card login"><img class="logo" src="icons/logo.png" alt="Villa Crocante, desde 2003" width="240" height="172"><h2>Entrar no app</h2><p class="mute">Use o e-mail Google cadastrado pela Villa Crocante.</p><div id="gbtn"></div>
   ${S.msg?`<p class="erro">${esc(S.msg)}</p>`:''}${semCfg?'<p class="erro">App ainda não configurado: preencha o arquivo config.js.</p>':''}</div>`;
 }
 let gsiOk=false;
@@ -364,9 +364,9 @@ async function carregar(){
   }
   soft();
 }
-const VERSAO='4';
+const VERSAO='5';
 async function init(){
-  const mk=$('.mark small');if(mk)mk.textContent='Força de vendas externa · versão '+VERSAO+(P?' · preços '+P.vigencia:'');
+  const mk=$('.mark small');if(mk)mk.textContent='Força de vendas · v'+VERSAO+(P?' · preços '+P.vigencia:'');
   document.body.insertAdjacentHTML('beforeend','<datalist id="dl-cid">'+[...CIDS].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist>');
   try{
     S.sess=await idb.get('sess')||null;S.fila=await idb.get('fila')||[];S.map=await idb.get('map')||{};
