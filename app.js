@@ -364,7 +364,9 @@ async function carregar(){
   }
   soft();
 }
+const VERSAO='4';
 async function init(){
+  const mk=$('.mark small');if(mk)mk.textContent='Força de vendas externa · versão '+VERSAO+(P?' · preços '+P.vigencia:'');
   document.body.insertAdjacentHTML('beforeend','<datalist id="dl-cid">'+[...CIDS].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist>');
   try{
     S.sess=await idb.get('sess')||null;S.fila=await idb.get('fila')||[];S.map=await idb.get('map')||{};
