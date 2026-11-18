@@ -1,0 +1,16 @@
+{
+  "name": "Villa Crocante Vendas",
+  "short_name": "Villa Vendas",
+  "description": "App da força de vendas externa da Villa Crocante",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f1ec",
+  "theme_color": "#3a2416",
+  "lang": "pt-BR",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
