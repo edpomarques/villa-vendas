@@ -54,7 +54,7 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
 
 ## Parte 5 – Cadastrar vendedores e ativar o relatório
 1. Na aba **VENDEDORES**, preencha uma linha por pessoa: e-mail Gmail, nome e **SIM** na coluna ativo. Para bloquear alguém, troque para **NÃO**; o bloqueio vale em até 5 minutos.
-2. No menu **App Vendas**, clique em **2. Ativar relatório D-1 diário**. O relatório chega todo dia às 7h para os e-mails da aba CONFIG (`RELATORIO_EMAILS`). Para incluir o sócio, separe os e-mails com vírgula. Para mudar o horário, altere `HORA_RELATORIO` e ative de novo.
+2. No menu **App Vendas**, clique em **2. Ativar relatório (seg a sex, exceto feriados)**. O relatório chega todo dia às 7h para os e-mails da aba CONFIG (`RELATORIO_EMAILS`). Para incluir o sócio, separe os e-mails com vírgula. Para mudar o horário, altere `HORA_RELATORIO` e ative de novo.
 3. Para testar: **App Vendas > Enviar relatório de HOJE (teste)**. Mostra os registros feitos hoje até o momento, com "[TESTE]" no assunto, e não grava na aba RESUMO_DIARIO. **Enviar relatório D-1 agora** reenvia o relatório de ontem.
 
 ## Parte 6 – Instalar no celular do vendedor
@@ -69,6 +69,14 @@ Tempo total: cerca de 30 minutos, uma única vez. Faça tudo logado na **conta G
 - **Sem internet:** os registros e as fotos ficam guardados no celular e são enviados sozinhos quando o sinal volta. Enquanto houver pendências, aparece um aviso no topo, e o vendedor não consegue sair da conta.
 - **Provas da visita:** as fotos recebem uma marca com vendedor, data e hora. Cada visita grava a localização GPS, com link para o mapa na planilha. Visitas sem GPS aparecem como alerta no relatório.
 - **Relatório D-1:** KM rodados, visitas, vendas, degustações, negociações, não vendas, conversão, horário da primeira e da última visita, alertas (KM não encerrado, sem GPS, agenda atrasada), motivos de não venda e preços da concorrência. Todo dia o histórico também é gravado na aba RESUMO_DIARIO.
+
+## Calendário do relatório gerencial
+- Envio às `HORA_RELATORIO` (CONFIG), **de segunda a sexta, exceto feriados**.
+- Cada envio cobre os dias desde o último dia de envio até ontem: na segunda, sexta + sábado + domingo; depois de um feriado, o feriado também. Nenhum dia fica de fora.
+- Feriados já incluídos: nacionais (01/01, 21/04, 01/05, 07/09, 12/10, 02/11, 15/11, 20/11, 25/12), Carnaval (segunda e terça), Sexta-feira Santa e Corpus Christi.
+- Feriados municipais ou folgas da empresa: chave **FERIADOS** na aba CONFIG, separados por vírgula. `31/08` vale todo ano; `24/12/2026` vale só naquele ano.
+- **App Vendas > Ver próximos disparos** mostra os 10 próximos envios e o período de cada um.
+- A aba RESUMO_DIARIO continua com uma linha por vendedor e por dia (fins de semana e feriados só entram se houve atividade).
 
 ## Pedido na visita
 - Ao marcar **Venda – negócio fechado**, aparece o cartão **Pedido**: o vendedor escolhe a tabela (**Especial 1**, **Padrão** ou **Especial 2**) e marca os volumes de cada produto. O total é calculado na hora.

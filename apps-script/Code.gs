@@ -34,17 +34,19 @@ const CAB = {
 const COLS = { km: 'KM', clientes: 'CLIENTES', visitas: 'VISITAS' };
 const ATIVO = /^(sim|s|true|ativo|1)$/i;
 const PERIOD = { diario: 'Diário', '2xsem': '2x por semana', semanal: 'Semanal', quinzenal: 'Quinzenal', mensal: 'Mensal' };
-const SCHEMA = '2';
+const SCHEMA = '3';
 
 /* ---------------- menu e configuração ---------------- */
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('App Vendas')
     .addItem('1. Configurar planilha', 'setup')
-    .addItem('2. Ativar relatório D-1 diário', 'instalarGatilho')
-    .addItem('Enviar relatório D-1 agora', 'relatorioD1')
+    .addItem('2. Ativar relatório (seg a sex, exceto feriados)', 'instalarGatilho')
+    .addItem('Ver próximos disparos', 'verProximosDisparos')
+    .addItem('Enviar relatório agora', 'relatorioD1')
     .addItem('Enviar relatório de HOJE (teste)', 'relatorioHoje')
     .addSeparator()
     .addItem('3. Criar linhas de metas do mês', 'criarMetasMes')
+    .addItem('Atualizar estrutura da planilha', 'migrarAgora')
     .addToUi();
 }
 
@@ -68,9 +70,10 @@ function setup() {
 }
 
 function instalarGatilho() {
-  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'relatorioD1') ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger('relatorioD1').timeBased().everyDays(1).atHour(Number(getCfg('HORA_RELATORIO') || 7)).inTimezone(TZ).create();
-  try { SpreadsheetApp.getUi().alert('Relatório D-1 ativado: todo dia por volta das ' + (getCfg('HORA_RELATORIO') || 7) + 'h para ' + getCfg('RELATORIO_EMAILS') + '.'); } catch (e) {}
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (['relatorioD1', 'disparoGerencial'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
+  // roda todo dia na hora configurada; a função só envia de segunda a sexta, exceto feriados
+  ScriptApp.newTrigger('disparoGerencial').timeBased().everyDays(1).atHour(Number(getCfg('HORA_RELATORIO') || 7)).inTimezone(TZ).create();
+  try { SpreadsheetApp.getUi().alert('Relatório gerencial ativado: segunda a sexta, exceto feriados, por volta das ' + (getCfg('HORA_RELATORIO') || 7) + 'h, para ' + getCfg('RELATORIO_EMAILS') + '. Na segunda, o e-mail cobre sexta, sábado e domingo; depois de feriado, cobre também o feriado.'); } catch (e) {}
 }
 
 /* ---------------- utilidades ---------------- */
@@ -103,10 +106,12 @@ function garantirAba(n, ss) {
   return sh;
 }
 /** Atualiza a estrutura da planilha uma vez por versão do servidor. */
+function migrarAgora() { PropertiesService.getScriptProperties().deleteProperty('SCHEMA'); migrar(); avisar('Estrutura atualizada. Na aba CONFIG, a chave FERIADOS recebe os feriados municipais, ex.: 31/08, 15/08/2027'); }
 function migrar() {
   const p = PropertiesService.getScriptProperties();
   if (p.getProperty('SCHEMA') === SCHEMA) return;
   Object.keys(CAB).forEach(function (n) { garantirAba(n); });
+  if (!aba('CONFIG').getRange('A:A').createTextFinder('FERIADOS').matchEntireCell(true).findNext()) setCfg('FERIADOS', '');
   p.setProperty('SCHEMA', SCHEMA);
 }
 /** Menu: cria uma linha por vendedor ativo para o mês atual na aba METAS (não apaga nada). */
@@ -360,47 +365,118 @@ function salvarFoto(u, b) {
 }
 
 /* ---------------- relatório D-1 ---------------- */
-function relatorioHoje() {
-  relatorioD1(Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), true);
+/* ---------------- calendário do disparo: segunda a sexta, exceto feriados ---------------- */
+function isoDia(d) { return Utilities.formatDate(d, TZ, 'yyyy-MM-dd'); }
+function diaDe(iso) { const p = iso.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2], 12); }
+function somaDias(iso, n) { const d = diaDe(iso); d.setDate(d.getDate() + n); return isoDia(d); }
+function pascoa(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+    g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+    l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), mes = Math.floor((h + l - 7 * m + 114) / 31),
+    dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return isoDia(new Date(y, mes - 1, dia, 12));
 }
+/** Feriados nacionais + Carnaval (seg e ter), Sexta-feira Santa e Corpus Christi + datas da chave FERIADOS na aba CONFIG. */
+function feriados(y) {
+  const f = {};
+  ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'].forEach(function (md) { f[y + '-' + md] = 1; });
+  const p = pascoa(y);
+  [-48, -47, -2, 60].forEach(function (n) { f[somaDias(p, n)] = 1; });
+  String(getCfg('FERIADOS') || '').split(/[,;\s]+/).forEach(function (t) {
+    const m = t.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);
+    if (m && (!m[3] || +m[3] === y)) f[y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2)] = 1;
+  });
+  return f;
+}
+function diaDeDisparo(iso) { const w = diaDe(iso).getDay(); return w >= 1 && w <= 5 && !feriados(+iso.slice(0, 4))[iso]; }
+/** Dias cobertos por um disparo em "hoje": do último dia de disparo anterior até ontem. Ex.: segunda cobre sexta, sábado e domingo. */
+function periodoDoDisparo(hojeIso) {
+  let ini = somaDias(hojeIso, -1), n = 0;
+  while (!diaDeDisparo(ini) && n++ < 15) ini = somaDias(ini, -1);
+  const dias = [];
+  for (let d = ini; d < hojeIso; d = somaDias(d, 1)) dias.push(d);
+  return dias;
+}
+/** Gatilho diário (HORA_RELATORIO): só envia em dia de disparo. */
+function disparoGerencial() {
+  const hojeIso = isoDia(new Date());
+  if (!diaDeDisparo(hojeIso)) return;
+  gerarRelatorio(periodoDoDisparo(hojeIso), false);
+}
+/** Menu: mostra os próximos 10 disparos e o período que cada um cobre. */
+function verProximosDisparos() {
+  const out = []; let d = isoDia(new Date()), n = 0;
+  const br = function (iso) { return Utilities.formatDate(diaDe(iso), TZ, 'EEE dd/MM'); };
+  while (out.length < 10 && n++ < 60) {
+    if (diaDeDisparo(d)) { const p = periodoDoDisparo(d); out.push(br(d) + ' ' + (getCfg('HORA_RELATORIO') || 7) + 'h → ' + (p.length > 1 ? br(p[0]) + ' a ' + br(p[p.length - 1]) : br(p[0]))); }
+    d = somaDias(d, 1);
+  }
+  const ativo = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'disparoGerencial' || t.getHandlerFunction() === 'relatorioD1'; });
+  avisar((ativo ? 'Disparo automático ATIVO.' : 'Disparo automático DESATIVADO: use o item 2 do menu.') + '\nSegunda a sexta, exceto feriados (nacionais, Carnaval, Sexta-feira Santa, Corpus Christi e os da chave FERIADOS na aba CONFIG).\n\nPróximos envios:\n' + out.join('\n'));
+}
+
+function relatorioHoje() { gerarRelatorio([isoDia(new Date())], true); }
 
 function avisar(t) { try { SpreadsheetApp.getUi().alert(t); } catch (e) {} }
 
-function relatorioD1(diaOpcional, teste) {
+/** Menu "Enviar relatório agora": envia o período que o disparo de hoje cobriria. Chamado por gatilho antigo: respeita o calendário. */
+function relatorioD1(arg) {
+  if (typeof arg === 'string') return gerarRelatorio([arg], false);
+  if (arg && typeof arg === 'object') return disparoGerencial();
+  gerarRelatorio(periodoDoDisparo(isoDia(new Date())), false);
+}
+
+function gerarRelatorio(dias, teste) {
   teste = teste === true;
-  const dia = typeof diaOpcional === 'string' ? diaOpcional : Utilities.formatDate(new Date(Date.now() - 864e5), TZ, 'yyyy-MM-dd');
-  const diaBr = dia.split('-').reverse().join('/');
+  if (!dias || !dias.length) return;
+  const DS = {}; dias.forEach(function (d) { DS[d] = 1; });
+  const br = function (iso) { return iso.split('-').reverse().slice(0, 2).join('/'); };
+  const sem = function (iso) { return Utilities.formatDate(diaDe(iso), TZ, 'EEE'); };
+  const multi = dias.length > 1;
+  const diaBr = multi ? sem(dias[0]) + ' ' + br(dias[0]) + ' a ' + sem(dias[dias.length - 1]) + ' ' + br(dias[dias.length - 1]) : br(dias[0]) + '/' + dias[0].slice(0, 4);
   const agora = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm");
   const sv = aba('VENDEDORES');
-  const vend = (sv.getLastRow() > 1 ? sv.getRange(2, 1, sv.getLastRow() - 1, 3).getValues() : [])
-    .filter(function (r) { return r[0] && ATIVO.test(String(r[2]).trim()); })
+  const vend = (sv.getLastRow() > 1 ? sv.getRange(2, 1, sv.getLastRow() - 1, 4).getValues() : [])
+    .filter(function (r) { return r[0] && ATIVO.test(String(r[2]).trim()) && !/^gestor$/i.test(String(r[3]).trim()); })
     .map(function (r) { return { email: String(r[0]).trim().toLowerCase(), nome: String(r[1] || r[0]).trim() }; });
-  const km = ler('KM').filter(function (o) { return o.data === dia; });
-  const vis = ler('VISITAS').filter(function (o) { return o.data === dia; });
+  const kmT = ler('KM').filter(function (o) { return DS[o.data]; });
+  const visT = ler('VISITAS').filter(function (o) { return DS[o.data]; });
   const cli = ler('CLIENTES');
+  const quando = function (ts) { return ts ? Utilities.formatDate(new Date(ts), TZ, multi ? 'dd/MM HH:mm' : 'HH:mm') : ''; };
 
-  const L = vend.map(function (v) {
-    const k = km.find(function (x) { return x.uid === v.email; });
+  const calc = function (v, km, vis) {
+    const kk = km.filter(function (x) { return x.uid === v.email; });
     const vv = vis.filter(function (x) { return x.uid === v.email; }).sort(function (a, b) { return a.ts - b.ts; });
     const g = function (s) { return vv.filter(function (x) { return GRUPO[x.status] === s; }).length; };
+    const abertos = kk.filter(function (k) { return k.kmFim == null; }).length;
+    const kmR = kk.filter(function (k) { return k.kmFim != null; }).reduce(function (s, k) { return s + (k.kmFim - k.kmIni); }, 0);
     return {
-      v: v, kmR: k && k.kmFim != null ? k.kmFim - k.kmIni : '', kmSt: !k ? 'Não iniciado' : k.kmFim == null ? 'Não encerrado' : 'OK',
+      v: v, kmR: kk.length ? kmR : '', kmSt: abertos ? 'Não encerrado' + (abertos > 1 ? ' (' + abertos + ' dias)' : '') : !kk.length ? 'Não iniciado' : 'OK',
       n: vv.length, venda: g('venda'), deg: g('degustacao'), neg: g('negociacao'), nv: g('nao_venda'),
       conv: vv.length ? Math.round(g('venda') / vv.length * 100) : 0,
-      ini: vv.length ? hora(vv[0].ts) : '', fim: vv.length ? hora(vv[vv.length - 1].ts) : '',
+      ini: vv.length ? quando(vv[0].ts) : '', fim: vv.length ? quando(vv[vv.length - 1].ts) : '',
       semGps: vv.filter(function (x) { return !x.gps; }).length,
-      atras: cli.filter(function (c) { return c.uid === v.email && c.proxData && c.proxData < agora; }).length
+      atras: cli.filter(function (c) { return c.uid === v.email && c.proxData && c.proxData < agora; }).length,
+      ped: vv.reduce(function (s, x) { return s + (x.pedido && x.pedido.total || 0); }, 0)
     };
-  });
+  };
+  // o período sempre começa num dia útil: todos os vendedores aparecem, com alerta se não trabalharam
+  const L = vend.map(function (v) { return calc(v, kmT, visT); });
+  const km = kmT, vis = visT;
 
-  // histórico na aba RESUMO_DIARIO (o teste de hoje não grava: o dia ainda não terminou)
+  // histórico na aba RESUMO_DIARIO: uma linha por vendedor e por dia (o teste de hoje não grava)
   const rs = aba('RESUMO_DIARIO');
-  if (!teste && rs.getLastRow() > 1) {
-    const datas = rs.getRange(2, 1, rs.getLastRow() - 1, 1).getDisplayValues();
-    for (let i = datas.length - 1; i >= 0; i--) if (datas[i][0] === dia || datas[i][0] === diaBr) rs.deleteRow(i + 2);
-  }
-  if (!teste) L.forEach(function (x) {
-    rs.appendRow(["'" + dia, x.v.nome, x.v.email, x.kmR, x.kmSt, x.n, x.venda, x.deg, x.neg, x.nv, x.conv, x.ini, x.fim, x.semGps, x.atras]);
+  if (!teste) dias.forEach(function (dia) {
+    const kmD = kmT.filter(function (o) { return o.data === dia; }), visD = visT.filter(function (o) { return o.data === dia; });
+    const LD = vend.map(function (v) { return calc(v, kmD, visD); });
+    if (!diaDeDisparo(dia) && !LD.some(function (x) { return x.n || x.kmR !== '' || x.kmSt !== 'Não iniciado'; })) return; // fim de semana/feriado sem atividade
+    if (rs.getLastRow() > 1) {
+      const datas = rs.getRange(2, 1, rs.getLastRow() - 1, 1).getDisplayValues();
+      for (let i = datas.length - 1; i >= 0; i--) if (datas[i][0] === dia || datas[i][0] === dia.split('-').reverse().join('/')) rs.deleteRow(i + 2);
+    }
+    LD.forEach(function (x) {
+      rs.appendRow(["'" + dia, x.v.nome, x.v.email, x.kmR, x.kmSt, x.n, x.venda, x.deg, x.neg, x.nv, x.conv, x.ini, x.fim, x.semGps, x.atras]);
+    });
   });
 
   // e-mail
@@ -423,11 +499,11 @@ function relatorioD1(diaOpcional, teste) {
     return a.length ? '<span style="color:#b42318">' + a.join(' · ') + '</span>' : '<span style="color:#1f7a45">OK</span>';
   };
   let h = '<div style="font-family:Arial,sans-serif;color:#22160d;max-width:760px">';
-  h += '<div style="background:#3a2416;color:#fff;padding:16px 18px;border-radius:10px 10px 0 0"><div style="font-size:20px;font-weight:800">Vendas externas · ' + diaBr + '</div><div style="font-size:13px;opacity:.8">' + (teste ? 'TESTE · dados de hoje até ' + agora.slice(11) + ' (parcial)' : 'Relatório D-1') + ' · Villa Crocante</div></div>';
+  h += '<div style="background:#3a2416;color:#fff;padding:16px 18px;border-radius:10px 10px 0 0"><div style="font-size:20px;font-weight:800">Vendas externas · ' + diaBr + '</div><div style="font-size:13px;opacity:.8">' + (teste ? 'TESTE · dados de hoje até ' + agora.slice(11) + ' (parcial)' : multi ? 'Relatório do período (' + dias.length + ' dias, desde o último dia útil)' : 'Relatório D-1') + ' · Villa Crocante</div></div>';
   h += '<table style="border-collapse:separate;border-spacing:8px;margin:8px 0"><tr>' + card('Visitas', T.n) + card('Vendas', T.venda) + card('Conversão', conv + '%') + card('Degustações', T.deg) + card('Não vendas', T.nv) + card('KM rodados', T.km) + card('Pedidos', reais(T.ped)) + '</tr></table>';
-  h += '<h3 style="margin:16px 0 6px">Por vendedor</h3><table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>Vendedor</th><th ' + th + '>KM</th><th ' + th + '>Visitas</th><th ' + th + '>Vendas</th><th ' + th + '>Degust.</th><th ' + th + '>Negoc.</th><th ' + th + '>Não venda</th><th ' + th + '>Conv.</th><th ' + th + '>1ª / última</th><th ' + th + '>Alertas</th></tr>';
+  h += '<h3 style="margin:16px 0 6px">Por vendedor</h3><table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>Vendedor</th><th ' + th + '>KM</th><th ' + th + '>Visitas</th><th ' + th + '>Vendas</th><th ' + th + '>Degust.</th><th ' + th + '>Negoc.</th><th ' + th + '>Não venda</th><th ' + th + '>Conv.</th><th ' + th + '>' + (multi ? 'Pedidos' : '1ª / última') + '</th><th ' + th + '>Alertas</th></tr>';
   L.forEach(function (x) {
-    h += '<tr><td ' + td + '><b>' + esc(x.v.nome) + '</b></td><td ' + tdr + '>' + (x.kmR === '' ? '–' : x.kmR) + '</td><td ' + tdr + '>' + x.n + '</td><td ' + tdr + '>' + x.venda + '</td><td ' + tdr + '>' + x.deg + '</td><td ' + tdr + '>' + x.neg + '</td><td ' + tdr + '>' + x.nv + '</td><td ' + tdr + '>' + x.conv + '%</td><td ' + td + '>' + (x.ini ? x.ini + ' – ' + x.fim : '–') + '</td><td ' + td + '>' + alerta(x) + '</td></tr>';
+    h += '<tr><td ' + td + '><b>' + esc(x.v.nome) + '</b></td><td ' + tdr + '>' + (x.kmR === '' ? '–' : x.kmR) + '</td><td ' + tdr + '>' + x.n + '</td><td ' + tdr + '>' + x.venda + '</td><td ' + tdr + '>' + x.deg + '</td><td ' + tdr + '>' + x.neg + '</td><td ' + tdr + '>' + x.nv + '</td><td ' + tdr + '>' + x.conv + '%</td><td ' + td + '>' + (multi ? (x.ped ? reais(x.ped) : '–') : x.ini ? x.ini + ' – ' + x.fim : '–') + '</td><td ' + td + '>' + alerta(x) + '</td></tr>';
   });
   h += '</table>';
   const nv = vis.filter(function (x) { return GRUPO[x.status] === 'nao_venda'; });
@@ -455,6 +531,6 @@ function relatorioD1(diaOpcional, teste) {
 
   const para = getCfg('RELATORIO_EMAILS');
   if (!para) return avisar('Relatório não enviado: preencha RELATORIO_EMAILS na aba CONFIG.');
-  MailApp.sendEmail({ to: para, subject: (teste ? '[TESTE] ' : '') + 'Villa Crocante · Vendas externas · ' + (teste ? 'HOJE ' : 'D-1 ') + diaBr + ' · ' + T.n + ' visitas, ' + T.venda + ' vendas', htmlBody: h, name: 'App Vendas Villa Crocante' });
+  MailApp.sendEmail({ to: para, subject: (teste ? '[TESTE] ' : '') + 'Villa Crocante · Vendas externas · ' + (teste ? 'HOJE ' : multi ? '' : 'D-1 ') + diaBr + ' · ' + T.n + ' visitas, ' + T.venda + ' vendas', htmlBody: h, name: 'App Vendas Villa Crocante' });
   avisar('Relatório ' + (teste ? 'de teste (hoje, ' : '(') + diaBr + ') enviado para: ' + para);
 }
